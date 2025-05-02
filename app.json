@@ -13,30 +13,32 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.stylofit.app",           
+      "bundleIdentifier": "com.stylofit.app",
       "config": {
-        "googleMapsApiKey": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"    
+        "googleMapsApiKey": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"
       }
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.stylofit.app",                   
+      "package": "com.stylofit.app",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"         
+          "apiKey": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"
         }
       }
     },
-
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "10829edb-25c0-44b4-8484-5a29c13dbb14"
+      }
     }
   }
 }
