@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // helper to validate the shape of an outfit post
+    function isValidOutfit() {
+      return
+        // text caption
+        request.resource.data.caption is string
+        // tags must be a list
+        && request.resource.data.tags is list
+        // userId must be a string
+        && request.resource.data.userId is string;
+    }
+
+    // --- USER PROFILE RULES ---
+    match /users/{userId} {
+      // only that user may create their own profile document
+      allow create: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.data.userId == userId;
+      // only that user may read, update or delete it
+      allow read, update, delete: if request.auth != null
+                                && request.auth.uid == userId;
+    }
+
+    // --- OUTFIT POSTS RULES ---
+    match /outfits/{postId} {
+      // allow any authenticated user to list or get outfits
+      allow read: if request.auth != null;
+
+      // creation must come from the owner, include required fields,
+      // and createdAt must equal the server timestamp
+      allow create: if request.auth != null
+                   && request.auth.uid == request.resource.data.userId
+                   && request.resource.data.imageUrl is string
+                   && request.resource.data.createdAt == request.time
+                   && isValidOutfit();
+
+      // no one may ever update or delete past posts
+      allow update, delete: if false;
+    }
+
+    // --- DEFAULT DENY EVERYTHING ELSE ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

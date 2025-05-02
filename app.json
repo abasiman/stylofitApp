@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "StyloFit",
+    "slug": "StyloFit",
+    "version": "1.0.0",
+    "scheme": "stylofit",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.stylofit.app",           
+      "config": {
+        "googleMapsApiKey": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"    
+      }
+    },
+
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.stylofit.app",                   
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"         
+        }
+      }
+    },
+
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
