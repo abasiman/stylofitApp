@@ -7,158 +7,204 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image
+  Image,
+  Pressable
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { auth, db } from '../../firebase';           // adjust path if needed
-import { onAuthStateChanged } from 'firebase/auth';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { auth, db } from '../../firebase';
 import {
   doc,
   getDoc,
   collection,
   query,
   where,
-  onSnapshot
+  onSnapshot,
+  deleteDoc,
+  serverTimestamp
 } from 'firebase/firestore';
+import { usePosts } from '../contexts/PostsContext';
 
 export default function UsersScreen() {
-  const navigation = useNavigation();
-  const [username, setUsername] = useState('');
-  const [email, setEmail]       = useState('');
-  const [bio, setBio]           = useState(null);
-  const [outfits, setOutfits]   = useState([]);
+  const nav         = useNavigation();
+  const route       = useRoute();
+  const me          = auth.currentUser;
+  const profileUid  = route.params?.userId || me.uid;
+  const isMe        = profileUid === me.uid;
+  const { followUser, unfollowUser } = usePosts();
 
+  // local state
+  const [userData, setUserData]       = useState({ displayName: null, bio: '', photoURL: null });
+  const [outfits,   setOutfits]       = useState([]);
+  const [followers, setFollowers]     = useState([]);
+  const [following, setFollowing]     = useState([]);
+  const [isFollowing, setIsFollowing] = useState(false);
+
+  // 1️⃣ Load profile doc
   useEffect(() => {
-    let unsubscribeOutfits = () => {};
-
-    const unsubscribeAuth = onAuthStateChanged(auth, user => {
-      if (user) {
-        setUsername(user.displayName || user.email.split('@')[0]);
-        setEmail(user.email);
-
-        // fetch bio
-        const userDocRef = doc(db, 'users', user.uid);
-        getDoc(userDocRef)
-          .then(docSnap => {
-            setBio(docSnap.exists() ? docSnap.data().bio ?? '' : '');
-          })
-          .catch(err => {
-            console.error('Error loading bio:', err);
-            setBio('');
+    const ref = doc(db, 'users', profileUid);
+    getDoc(ref)
+      .then(snap => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setUserData({
+            displayName: data.displayName || (isMe ? me.displayName : 'Unknown'),
+            bio:         data.bio         || '',
+            photoURL:    data.photoURL    || null
           });
+        } else if (isMe) {
+          setUserData({ displayName: me.displayName, bio: '', photoURL: null });
+        } else {
+          setUserData({ displayName: 'Unknown', bio: '', photoURL: null });
+        }
+      })
+      .catch(err => {
+        console.error('Error loading profile:', err);
+        setUserData({
+          displayName: isMe ? me.displayName : 'Unknown',
+          bio:         '',
+          photoURL:    null
+        });
+      });
+  }, [profileUid]);
 
-        // subscribe to outfits collection
-        const q = query(
-          collection(db, 'outfits'),
-          where('userId', '==', user.uid)
-        );
-        unsubscribeOutfits = onSnapshot(
-          q,
-          snap => {
-            const arr = snap.docs.map(d => ({
-              id: d.id,
-              ...d.data()
-            }));
-            setOutfits(arr);
-          },
-          err => console.error('Outfits listen error:', err)
-        );
-      }
-    });
+  // 2️⃣ Subscribe to outfits
+  useEffect(() => {
+    const q = query(
+      collection(db, 'outfits'),
+      where('userId', '==', profileUid)
+    );
+    const unsub = onSnapshot(q, snap =>
+      setOutfits(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return unsub;
+  }, [profileUid]);
 
-    return () => {
-      unsubscribeAuth();
-      unsubscribeOutfits();
-    };
-  }, []);
+  // 3️⃣ Subscribe to followers & following
+  useEffect(() => {
+    const unsubF = onSnapshot(
+      collection(db, 'users', profileUid, 'followers'),
+      snap => setFollowers(snap.docs.map(d => d.id))
+    );
+    const unsubG = onSnapshot(
+      collection(db, 'users', profileUid, 'following'),
+      snap => setFollowing(snap.docs.map(d => d.id))
+    );
+    return () => { unsubF(); unsubG(); };
+  }, [profileUid]);
 
-  const goToEdit = () => navigation.getParent().navigate('EditProfile');
+  // 4️⃣ Track if I follow them
+  useEffect(() => {
+    if (isMe) return;
+    const likeRef = doc(db, 'users', profileUid, 'followers', me.uid);
+    const unsub = onSnapshot(likeRef, snap => setIsFollowing(snap.exists()));
+    return unsub;
+  }, [profileUid]);
+
+  // 5️⃣ Compute total likes across outfits
+  const totalLikes = outfits.reduce((sum, o) => sum + (o.likesCount || 0), 0);
+
+  // 6️⃣ Handler for Follow/Unfollow
+  const onToggleFollow = () => {
+    if (isFollowing) unfollowUser(profileUid);
+    else             followUser(profileUid);
+  };
 
   return (
     <ScrollView style={styles.container}>
+      {/* Header */}
       <View style={styles.topContainer}>
         <View style={styles.headerRow}>
           <Text style={styles.logo}>STYLoFiT</Text>
-          <Text style={styles.profileTitle}>PROFILE</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+          <Text style={styles.title}>PROFILE</Text>
+          <TouchableOpacity onPress={() => nav.navigate('Settings')}>
             <Icon name="settings-outline" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
-        <View style={styles.profileImage} />
+        <View style={styles.profileImage}>
+          {userData.photoURL && (
+            <Image source={{ uri: userData.photoURL }} style={styles.profileImage} />
+          )}
+        </View>
       </View>
 
-      <View style={styles.userInfoContainer}>
-        <Text style={styles.userName}>{username}</Text>
-        <Text style={styles.userEmail}>{email}</Text>
+      {/* User Info */}
+      <View style={styles.userInfo}>
+        <Text style={styles.username}>{userData.displayName}</Text>
+        {userData.bio ? (
+          <Text style={styles.bio}>{userData.bio}</Text>
+        ) : isMe ? (
+          <Pressable onPress={() => nav.getParent().navigate('EditProfile')}>
+            <Text style={[styles.bio, styles.addBio]}>Add bio</Text>
+          </Pressable>
+        ) : null}
 
-        {bio !== null && bio.trim() !== '' ? (
-          <Text style={styles.userBio}>{bio}</Text>
+        {isMe ? (
+          <Pressable
+            style={styles.editBtn}
+            onPress={() => nav.getParent().navigate('EditProfile')}
+          >
+            <Text style={styles.editText}>Edit Profile</Text>
+          </Pressable>
         ) : (
-          <TouchableOpacity onPress={goToEdit}>
-            <Text style={[styles.userBio, styles.addBio]}>
-              Add bio here
+          <Pressable
+            style={[styles.followBtn, isFollowing && styles.following]}
+            onPress={onToggleFollow}
+          >
+            <Text style={[styles.followText, isFollowing && styles.followingText]}>
+              {isFollowing ? 'Following' : 'Follow'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
-
-        <TouchableOpacity style={styles.editButton} onPress={goToEdit}>
-          <Text style={styles.editButtonText}>Edit Profile</Text>
-        </TouchableOpacity>
       </View>
 
-      
-<View style={styles.statsContainer}>
-        <View style={styles.stat}>
-          <Text style={styles.statNumber}>29</Text>
+      {/* Stats */}
+      <View style={styles.stats}>
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{outfits.length}</Text>
           <Text style={styles.statLabel}>outfits</Text>
         </View>
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('FollowingNFollowers', { type: 'followers' })
-          }
+        <Pressable
+          style={styles.statItem}
+          onPress={() => nav.navigate('FollowingNFollowers', {
+            type: 'followers',
+            userId: profileUid
+          })}
         >
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>15.7k</Text>
-            <Text style={styles.statLabel}>followers</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('FollowingNFollowers', { type: 'following' })
-          }
+          <Text style={styles.statNumber}>{followers.length}</Text>
+          <Text style={styles.statLabel}>followers</Text>
+        </Pressable>
+        <Pressable
+          style={styles.statItem}
+          onPress={() => nav.navigate('FollowingNFollowers', {
+            type: 'following',
+            userId: profileUid
+          })}
         >
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>298</Text>
-            <Text style={styles.statLabel}>following</Text>
-          </View>
-        </TouchableOpacity>
-        <View style={styles.stat}>
-          <Text style={styles.statNumber}>30.2M</Text>
+          <Text style={styles.statNumber}>{following.length}</Text>
+          <Text style={styles.statLabel}>following</Text>
+        </Pressable>
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{totalLikes}</Text>
           <Text style={styles.statLabel}>likes</Text>
         </View>
       </View>
 
-      <Text style={styles.myOutfitsTitle}>My Outfits</Text>
-
-      <View style={styles.outfitsGrid}>
+      {/* Outfits Grid */}
+      <Text style={styles.sectionTitle}>My Outfits</Text>
+      <View style={styles.grid}>
         {outfits.length > 0 ? (
-          outfits.map(outfit => (
-            <TouchableOpacity
-              key={outfit.id}
+          outfits.map(o => (
+            <Pressable
+              key={o.id}
               style={styles.outfitBox}
-              onPress={() => {/* maybe view detail */}}
+              onPress={() => nav.navigate('OutfitDetail', { outfitId: o.id })}
             >
-              <Image
-                source={{ uri: outfit.imageUrl }}
-                style={styles.outfitImage}
-              />
-            </TouchableOpacity>
+              <Image source={{ uri: o.imageUrl }} style={styles.outfitImage} />
+            </Pressable>
           ))
         ) : (
-          <Text style={styles.noOutfitsText}>
-            No outfits yet. Upload one!
-          </Text>
+          <Text style={styles.emptyText}>No outfits yet.</Text>
         )}
       </View>
     </ScrollView>
@@ -166,115 +212,62 @@ export default function UsersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#fff' },
-  topContainer: {
-    backgroundColor: '#8C7661',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-  },
+  container:    { flex: 1, backgroundColor: '#fff' },
+  topContainer: { backgroundColor: '#8C7661', padding: 20 },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems:    'center',
+    justifyContent:'space-between'
   },
-  logo: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  profileTitle: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
+  logo:  { color: '#fff', fontSize: 16, fontWeight: '700' },
+  title: {
+    position: 'absolute', left: 0, right: 0,
+    textAlign: 'center', color: '#fff', fontSize: 15, fontWeight: '500'
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    backgroundColor: '#ccc',
-    borderRadius: 60,
-    alignSelf: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: '#ccc', alignSelf: 'center',
+    marginTop: 20, marginBottom: 20
   },
-  userInfoContainer: {
-    alignItems: 'center',
-    padding: 15,
+  userInfo: { alignItems: 'center', paddingHorizontal: 20 },
+  username: { fontSize: 20, fontWeight: 'bold' },
+  bio:      { textAlign: 'center', color: '#555', fontSize: 13, marginBottom: 12 },
+  addBio:   { color: '#8C7661', fontStyle: 'italic', textDecorationLine: 'underline' },
+  editBtn: {
+    borderColor: '#8C7661', borderWidth: 1,
+    borderRadius: 5, paddingHorizontal: 15, paddingVertical: 6
   },
-  userName: {
-    fontWeight: 'bold',
-    fontSize: 20,
-    marginVertical: 5,
+  editText: { color: '#8C7661', fontWeight: '600' },
+  followBtn: {
+    backgroundColor: '#8C7661',
+    borderRadius:    5, paddingHorizontal: 20, paddingVertical: 8
   },
-  userEmail: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+  following: {
+    backgroundColor: '#fff',
+    borderWidth:     1, borderColor: '#8C7661'
   },
-  userBio: {
-    textAlign: 'center',
-    color: '#555',
-    paddingHorizontal: 20,
-    fontSize: 13,
-  },
-  addBio: {
-    color: '#8C7661',
-    fontStyle: 'italic',
-    textDecorationLine: 'underline',
-  },
-  editButton: {
-    marginTop: 10,
-    borderColor: '#8C7661',
-    borderWidth: 1,
-    borderRadius: 5,
-    paddingVertical: 5,
-    paddingHorizontal: 15,
-  },
-  editButtonText: {
-    color: '#8C7661',
-    fontWeight: '600',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-    marginHorizontal: 20,
-  },
-  myOutfitsTitle: {
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginVertical: 10,
-    marginLeft: 20,
-  },
-  outfitsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-    paddingBottom: 20,
-  },
-  outfitBox: {
-    width: '45%',
-    aspectRatio: 1,
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginVertical: 10,
-  },
-  outfitImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  noOutfitsText: {
-    width: '100%',
-    textAlign: 'center',
-    color: '#888',
-    marginTop: 20,
-  },
-});
+  followText:    { color: '#fff', fontWeight: '600' },
+  followingText: { color: '#8C7661' },
 
+  stats: {
+    flexDirection:   'row',
+    justifyContent:  'space-around',
+    paddingVertical: 20,
+    borderTopWidth:  1,
+    borderBottomWidth: 1,
+    borderColor:     '#eee',
+    marginHorizontal:20
+  },
+  statItem:  { alignItems: 'center' },
+  statNumber:{ fontWeight: 'bold', fontSize: 16 },
+  statLabel: { fontSize: 12, color: '#666' },
+
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', margin: 20 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around' },
+  outfitBox: {
+    width: '45%', aspectRatio: 1,
+    borderRadius:10, overflow: 'hidden', marginBottom: 20
+  },
+  outfitImage:{ width: '100%', height: '100%', resizeMode: 'cover' },
+  emptyText:  { textAlign: 'center', color: '#888', width: '100%' }
+});

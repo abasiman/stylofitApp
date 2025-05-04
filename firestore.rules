@@ -2,46 +2,83 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // helper to validate the shape of an outfit post
+    // Basic outfit‐creation check
     function isValidOutfit() {
-      return
-        // text caption
-        request.resource.data.caption is string
-        // tags must be a list
-        && request.resource.data.tags is list
-        // userId must be a string
-        && request.resource.data.userId is string;
+      return request.resource.data.caption is string
+          && request.resource.data.tags    is list
+          && request.resource.data.userId == request.auth.uid;
     }
 
-    // --- USER PROFILE RULES ---
+    // --- USER PROFILES ---
+    // Now: any signed-in user can list or get any user’s profile
     match /users/{userId} {
-      // only that user may create their own profile document
+      // List & get:
+      allow read: if request.auth != null;
+
+      // Create your own profile only:
       allow create: if request.auth != null
                    && request.auth.uid == userId
                    && request.resource.data.userId == userId;
-      // only that user may read, update or delete it
-      allow read, update, delete: if request.auth != null
-                                && request.auth.uid == userId;
+
+      // Update/delete your own profile only:
+      allow update, delete: if request.auth != null
+                          && request.auth.uid == userId;
     }
 
-    // --- OUTFIT POSTS RULES ---
-    match /outfits/{postId} {
-      // allow any authenticated user to list or get outfits
-      allow read: if request.auth != null;
-
-      // creation must come from the owner, include required fields,
-      // and createdAt must equal the server timestamp
+    // --- FOLLOWERS SUBCOLLECTION ---
+    match /users/{userId}/followers/{followerId} {
+      allow read:   if request.auth != null;
       allow create: if request.auth != null
-                   && request.auth.uid == request.resource.data.userId
-                   && request.resource.data.imageUrl is string
-                   && request.resource.data.createdAt == request.time
-                   && isValidOutfit();
-
-      // no one may ever update or delete past posts
-      allow update, delete: if false;
+                   && request.auth.uid == followerId;
+      allow delete: if request.auth != null
+                   && request.auth.uid == followerId;
     }
 
-    // --- DEFAULT DENY EVERYTHING ELSE ---
+    // --- FOLLOWING SUBCOLLECTION ---
+    match /users/{userId}/following/{followingId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                   && request.auth.uid == userId;
+      allow delete: if request.auth != null
+                   && request.auth.uid == userId;
+    }
+
+    // --- OUTFIT POSTS (parent doc) ---
+    match /outfits/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                  && request.auth.uid == request.resource.data.userId
+                  && request.resource.data.imageUrl is string
+                  && request.resource.data.createdAt == request.time
+                  && isValidOutfit();
+      allow update: if request.auth != null
+                  && request.writeFields.hasOnly(['likesCount','commentsCount']);
+      allow delete: if false;
+    }
+
+    // --- LIKES SUBCOLLECTION ---
+    match /outfits/{postId}/likes/{userId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                   && request.auth.uid == userId;
+      allow delete: if request.auth != null
+                   && request.auth.uid == userId;
+    }
+
+    // --- COMMENTS SUBCOLLECTION ---
+    match /outfits/{postId}/comments/{commentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                   && request.resource.data.userId   == request.auth.uid
+                   && request.resource.data.username is string
+                   && request.resource.data.text     is string
+                   && request.resource.data.timestamp is timestamp;
+      allow delete: if request.auth != null
+                   && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // --- DENY EVERYTHING ELSE ---
     match /{document=**} {
       allow read, write: if false;
     }
