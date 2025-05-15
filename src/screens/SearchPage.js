@@ -23,7 +23,7 @@ const CARD_SIZE   = (width - CARD_MARGIN * 4) / 3;
 
 export default function SearchPage() {
   const navigation = useNavigation();
-  const { posts } = usePosts();
+  const { posts = [] } = usePosts(); 
 
   const [users, setUsers]           = useState([]);
   const [searchText, setSearchText] = useState('');

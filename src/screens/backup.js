@@ -1,6 +1,6 @@
 // src/screens/UploadScreen.js
 import React, { useState, useRef, useEffect } from 'react';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons }      from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -15,56 +15,44 @@ import {
   FlatList,
   Platform,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system';
-import { auth, db, storage } from '../../firebase';
+import * as ImagePicker       from 'expo-image-picker';
+import * as Location          from 'expo-location';
+import { auth, db, storage }  from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import {
   ref as storageRef,
   uploadBytesResumable,
-  getDownloadURL,
+  getDownloadURL
 } from 'firebase/storage';
-import { usePosts } from '../contexts/PostsContext';
+import { usePosts }           from '../contexts/PostsContext';
 
 const { width } = Dimensions.get('window');
 const PLACES_AUTOCOMPLETE_URL = 'https://maps.googleapis.com/maps/api/place/autocomplete/json';
-const PLACES_DETAILS_URL = 'https://maps.googleapis.com/maps/api/place/details/json';
-const GOOGLE_API_KEY = 'AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc';
+const PLACES_DETAILS_URL      = 'https://maps.googleapis.com/maps/api/place/details/json';
+const GOOGLE_API_KEY          = 'AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc';  // ← your key
 
 const COLORS = {
-  primary: '#83715D',
-  white: '#FFFFFF',
+  primary:  '#83715D',
+  light:    '#EAEAE9',
+  white:    '#FFFFFF',
   textDark: '#333333',
 };
 
 export default function UploadScreen({ navigation }) {
-  const [image, setImage] = useState(null);
-  const [caption, setCaption] = useState('');
+  const [image, setImage]         = useState(null);
+  const [caption, setCaption]     = useState('');
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress]   = useState(0);
 
-  const [locInput, setLocInput] = useState('');
+  const [locInput, setLocInput]       = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  const [location, setLocation] = useState(null);
+  const [location, setLocation]       = useState(null);
 
   const currentCoordsRef = useRef(null);
-  const fetchTimeout = useRef(null);
-  const { addPost } = usePosts();
+  const fetchTimeout     = useRef(null);
+  const { addPost }      = usePosts();
 
-  // Media-library permission
-  useEffect(() => {
-    (async () => {
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission required', 'We need photo library access to upload.');
-        }
-      }
-    })();
-  }, []);
-
-  // Location permission
+  // 1️⃣ get GPS
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -77,7 +65,7 @@ export default function UploadScreen({ navigation }) {
     })();
   }, []);
 
-  // Pick an image
+  // 2️⃣ pick image
   const pickImage = async () => {
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
@@ -94,37 +82,37 @@ export default function UploadScreen({ navigation }) {
     }
   };
 
-  // Fixed uploadImageAsync function
+  // 3️⃣ uploadImageAsync using fetch→blob
   const uploadImageAsync = async (uri) => {
-    // 1️⃣ Get a real Blob for the file
+    console.log('🔄 Fetching URI as blob via fetch()…');
     const response = await fetch(uri);
-    const blob = await response.blob();
-  
-    // 2️⃣ Prepare a unique filename
-    const filename = `images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+    const blob = await response.blob();              // ← simpler and works on file://
+    const filename = `images/${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const ref = storageRef(storage, filename);
-  
-    // 3️⃣ Kick off the resumable upload
-    return new Promise((resolve, reject) => {
-      const uploadTask = uploadBytesResumable(ref, blob);
-  
-      uploadTask.on('state_changed',
-        snapshot => {
-          const p = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setProgress(p);
+    const task = uploadBytesResumable(ref, blob);
+
+    return new Promise((res, rej) => {
+      task.on(
+        'state_changed',
+        snap => {
+          const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+          console.log(`🚀 Upload ${pct.toFixed(0)}%`);
+          setProgress(pct);
         },
-        error => reject(error),
+        err => {
+          console.error('❌ Storage upload error:', err);
+          rej(err);
+        },
         async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          resolve(downloadURL);
+          const url = await getDownloadURL(task.snapshot.ref);
+          console.log('✅ Got download URL:', url);
+          res(url);
         }
       );
     });
   };
-  
 
-  // Rest of your component remains the same...
-  // Debounced Places autocomplete
+  // 4️⃣ Places autocomplete (debounced)
   useEffect(() => {
     clearTimeout(fetchTimeout.current);
     if (locInput.length < 2) {
@@ -151,7 +139,7 @@ export default function UploadScreen({ navigation }) {
     return () => clearTimeout(fetchTimeout.current);
   }, [locInput]);
 
-  // Fetch place details
+  // 5️⃣ Fetch Place Details on tap
   const handleSelectSuggestion = async (placeId, description) => {
     try {
       const r = await fetch(
@@ -161,8 +149,8 @@ export default function UploadScreen({ navigation }) {
       if (j.status === 'OK') {
         const loc = j.result.geometry.location;
         setLocation({
-          name: description,
-          latitude: loc.lat,
+          name:      description,
+          latitude:  loc.lat,
           longitude: loc.lng,
         });
         setLocInput(description);
@@ -175,27 +163,34 @@ export default function UploadScreen({ navigation }) {
     }
   };
 
-  // Handle final upload
+  // 6️⃣ Final upload: Storage → Firestore
   const handleUpload = async () => {
     if (!image || uploading) return;
     if (!location) {
       return Alert.alert('Select a location first');
     }
+
     setUploading(true);
     setProgress(0);
+    console.log('▶️ Starting upload…');
 
     try {
       const downloadURL = await uploadImageAsync(image);
 
+      console.log('📄 Writing Firestore doc…');
       const postData = {
-        userId: auth.currentUser.uid,
-        imageUrl: downloadURL,
+        userId:     auth.currentUser?.uid,
+        imageUrl:   downloadURL,
         caption,
         location,
-        createdAt: serverTimestamp(),
+        likes:      0,
+        comments:   [],
+        createdAt:  serverTimestamp(),
       };
+
       const docRef = await addDoc(collection(db, 'outfits'), postData);
-      addPost({ id: docRef.id, ...postData });
+      console.log('✅ Firestore ID:', docRef.id);
+      addPost?.({ id: docRef.id, ...postData });
 
       Alert.alert('Success', 'Outfit uploaded!', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -212,7 +207,7 @@ export default function UploadScreen({ navigation }) {
     }
   };
 
-  // Render form
+  // 7️⃣ render form
   const renderForm = () => (
     <>
       <View style={styles.header}>
@@ -280,9 +275,7 @@ export default function UploadScreen({ navigation }) {
               )}
             </TouchableOpacity>
             {uploading && (
-              <Text style={styles.progressText}>
-                {progress.toFixed(0)}% uploaded
-              </Text>
+              <Text style={styles.progressText}>{progress.toFixed(0)}% uploaded</Text>
             )}
           </View>
         </>
@@ -307,11 +300,11 @@ export default function UploadScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  header: { padding: 20, backgroundColor: COLORS.primary },
-  headerTitle: { color: COLORS.white, fontSize: 20, textAlign: 'center' },
-  imageContainer: { alignItems: 'center', margin: 20 },
-  image: { width: width - 40, height: (width - 40) * 1.2, borderRadius: 15 },
+  container:        { flex: 1, backgroundColor: COLORS.white },
+  header:           { padding: 20, backgroundColor: COLORS.primary },
+  headerTitle:      { color: COLORS.white, fontSize: 20, textAlign: 'center' },
+  imageContainer:   { alignItems: 'center', margin: 20 },
+  image:            { width: width - 40, height: (width - 40) * 1.2, borderRadius: 15 },
   imagePlaceholder: {
     width: width - 40,
     height: (width - 40) * 1.2,
@@ -322,29 +315,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   locationContainer: { marginHorizontal: 20, zIndex: 10 },
-  input: {
+  input:            {
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 8,
     padding: 10,
     marginBottom: 5,
   },
-  suggestionsBox: {
+  suggestionsBox:   {
     maxHeight: 150,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#eee',
   },
-  suggestionItem: { padding: 10, borderBottomWidth: 1, borderColor: '#eee' },
+  suggestionItem:   { padding: 10, borderBottomWidth: 1, borderColor: '#eee' },
   captionContainer: { margin: 20 },
-  uploadSection: { marginHorizontal: 20, marginTop: 10 },
-  uploadBtn: {
+  uploadSection:    { marginHorizontal: 20, marginTop: 10 },
+  uploadBtn:        {
     backgroundColor: COLORS.primary,
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
   },
-  disabledBtn: { backgroundColor: '#aaa' },
-  uploadText: { color: COLORS.white, fontSize: 16 },
-  progressText: { textAlign: 'center', marginTop: 5, color: COLORS.textDark },
+  disabledBtn:      { backgroundColor: '#aaa' },
+  uploadText:       { color: COLORS.white, fontSize: 16 },
+  progressText:     { textAlign: 'center', marginTop: 5, color: COLORS.textDark },
 });

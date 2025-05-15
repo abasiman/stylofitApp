@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-google-places-autocomplete/GooglePlacesAutocomplete.js b/node_modules/react-native-google-places-autocomplete/GooglePlacesAutocomplete.js
+index 60836de..94f2b89 100644
+--- a/node_modules/react-native-google-places-autocomplete/GooglePlacesAutocomplete.js
++++ b/node_modules/react-native-google-places-autocomplete/GooglePlacesAutocomplete.js
+@@ -87,7 +87,7 @@ export const GooglePlacesAutocomplete = forwardRef((props, ref) => {
+   };
+ 
+   const buildRowsFromResults = useCallback(
+-    (results, text) => {
++    (results = [], text) => {  
+       let res = [];
+       const shouldDisplayPredefinedPlaces = text
+         ? results.length === 0 && text.length === 0
