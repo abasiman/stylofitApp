@@ -26,6 +26,9 @@ export default function SignupScreen({ navigation }) {
   const [password, setPassword]     = useState("");
   const [confirm, setConfirm]       = useState("");
   const [sentModal, setSentModal]   = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingCancelable, setLoadingCancelable] = useState(false);
+  const [signupAbortController, setSignupAbortController] = useState(null);
 
   const handleSignup = async () => {
     if (!username.trim()) {
@@ -38,6 +41,14 @@ export default function SignupScreen({ navigation }) {
       return alert("Passwords do not match.");
     }
 
+    setLoading(true);
+    setLoadingCancelable(true);
+    const abortController = { canceled: false };
+    setSignupAbortController(abortController);
+
+    // Ensure loading modal is visible for at least 1s
+    const minLoadingTime = new Promise(resolve => setTimeout(resolve, 1000));
+
     try {
       // 1) Create the user
       const userCred = await createUserWithEmailAndPassword(
@@ -45,6 +56,8 @@ export default function SignupScreen({ navigation }) {
         email,
         password
       );
+      await minLoadingTime;
+      if (abortController.canceled) return;
 
       // 2) Save the chosen username
       await updateProfile(userCred.user, {
@@ -55,9 +68,22 @@ export default function SignupScreen({ navigation }) {
       await sendEmailVerification(userCred.user);
 
       // 4) Show confirmation modal
+      setLoading(false);
       setSentModal(true);
     } catch (err) {
-      alert("Signup failed: " + err.message);
+      await minLoadingTime;
+      setLoading(false);
+      if (!abortController.canceled) {
+        alert("Signup failed: " + err.message);
+      }
+    }
+  };
+
+  const handleCancelLoading = () => {
+    setLoading(false);
+    setLoadingCancelable(false);
+    if (signupAbortController) {
+      signupAbortController.canceled = true;
     }
   };
 
@@ -143,6 +169,26 @@ export default function SignupScreen({ navigation }) {
             >
               <Text style={modalStyles.buttonText}>Go to Login</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Loading Modal */}
+      <Modal
+        visible={loading}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelLoading}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.box}>
+            <Text style={{ color: COLORS.inputText, marginBottom: 16 }}>Signing up...</Text>
+            <FontAwesome5 name="spinner" size={32} color={COLORS.accent} style={{ marginBottom: 16 }} solid />
+            {loadingCancelable && (
+              <Pressable style={modalStyles.button} onPress={handleCancelLoading}>
+                <Text style={modalStyles.buttonText}>Cancel</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </Modal>

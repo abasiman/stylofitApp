@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { auth } from '../../firebase';
@@ -21,25 +23,52 @@ import {
 export default function LoginScreen({ navigation }) {
   const [email, setEmail]   = useState('');
   const [password, setPass] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [loadingCancelable, setLoadingCancelable] = useState(false);
+  const [loginAbortController, setLoginAbortController] = useState(null);
 
   const handleLogin = async () => {
     if (!email || !password) {
       return Alert.alert('Error', 'Email and password are required.');
     }
+    setLoading(true);
+    setLoadingCancelable(true);
+    const abortController = { canceled: false };
+    setLoginAbortController(abortController);
+
+    // Add artificial delay to always show loading modal for at least 1s
+    const minLoadingTime = new Promise(resolve => setTimeout(resolve, 1000));
+
     try {
+      // Simulate cancelable login (firebase does not support abort, so we check flag after await)
       const userCred = await signInWithEmailAndPassword(auth, email, password);
+      await minLoadingTime;
+      if (abortController.canceled) return; // If canceled, do nothing
 
       if (!userCred.user.emailVerified) {
+        setLoading(false);
         return Alert.alert(
           'Email not verified',
           'Please verify your email before logging in.'
         );
       }
 
-      // Successfully logged in
+      setLoading(false);
       navigation.replace('HomePage'); 
     } catch (err) {
-      Alert.alert('Login failed', err.message);
+      await minLoadingTime;
+      setLoading(false);
+      if (!abortController.canceled) {
+        Alert.alert('Login failed', err.message);
+      }
+    }
+  };
+
+  const handleCancelLoading = () => {
+    setLoading(false);
+    setLoadingCancelable(false);
+    if (loginAbortController) {
+      loginAbortController.canceled = true;
     }
   };
 
@@ -111,6 +140,26 @@ export default function LoginScreen({ navigation }) {
           <Text style={styles.switchLink}>Create an Account</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Loading Modal */}
+      <Modal
+        visible={loading}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelLoading}
+      >
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={{ marginTop: 16, color: COLORS.primary }}>Logging in...</Text>
+            {loadingCancelable && (
+              <TouchableOpacity style={styles.cancelButton} onPress={handleCancelLoading}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -221,5 +270,30 @@ const styles = StyleSheet.create({
   switchLink: {
     color: COLORS.white,
     fontWeight: 'bold',
+  },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingBox: {
+    backgroundColor: COLORS.white,
+    padding: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  cancelButton: {
+    marginTop: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.accent,
+    borderRadius: 6,
+  },
+  cancelButtonText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
