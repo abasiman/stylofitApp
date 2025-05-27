@@ -12,6 +12,9 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { auth } from '../../firebase';
@@ -23,6 +26,7 @@ import {
 export default function LoginScreen({ navigation }) {
   const [email, setEmail]   = useState('');
   const [password, setPass] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingCancelable, setLoadingCancelable] = useState(false);
   const [loginAbortController, setLoginAbortController] = useState(null);
@@ -72,74 +76,66 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  const handleReset = async () => {
-    if (!email) {
-      return Alert.alert('Error', 'Please enter your email first.');
-    }
-    try {
-      await sendPasswordResetEmail(auth, email);
-      Alert.alert(
-        'Reset email sent',
-        'Check your inbox for password reset instructions.'
-      );
-    } catch (err) {
-      Alert.alert('Error', err.message);
-    }
-  };
-
   return (
-    <View style={styles.container}>
-      <Image source={require('./stylologo.png')} style={styles.logoImage} />
-
-      <Text style={styles.title}>Welcome</Text>
-      <Text style={styles.subtitle}>Glad to see you!</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor={COLORS.primary}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor={COLORS.primary}
-        secureTextEntry
-        value={password}
-        onChangeText={setPass}
-      />
-
-      <TouchableOpacity onPress={handleReset}>
-        <Text style={styles.link}>Forgot Password?</Text>
-      </TouchableOpacity>
-
-      <Pressable style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Login</Text>
-      </Pressable>
-
-      <View style={styles.orRow}>
-        <View style={styles.line} />
-        <Text style={styles.orText}>Or login with</Text>
-        <View style={styles.line} />
-      </View>
-
-      <Pressable
-        style={styles.socialButton}
-        onPress={() => Alert.alert('Google login', 'Coming soon')}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <FontAwesome5 name="google" size={20} style={styles.socialIcon} />
-        <Text style={styles.socialText}>Login with Google</Text>
-      </Pressable>
+        <View style={styles.container}>
+          <Image source={require('./stylologo.png')} style={styles.logoImage} />
 
-      <View style={styles.switchRow}>
-        <Text style={styles.switchText}>No account? </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-          <Text style={styles.switchLink}>Create an Account</Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={styles.title}>Welcome</Text>
+          <Text style={styles.subtitle}>Glad to see you!</Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor={COLORS.primary}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
+
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Password"
+              placeholderTextColor={COLORS.primary}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPass}
+            />
+            <TouchableOpacity 
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <FontAwesome5 
+                name={showPassword ? "eye" : "eye-slash"} 
+                size={18} 
+                color={COLORS.primary}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <Pressable style={styles.button} onPress={handleLogin}>
+            <Text style={styles.buttonText}>Login</Text>
+          </Pressable>
+
+          <View style={styles.switchRow}>
+            <Text style={styles.switchText}>No account? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
+              <Text style={styles.switchLink}>Create an Account</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
 
       {/* Loading Modal */}
       <Modal
@@ -160,7 +156,7 @@ export default function LoginScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -174,18 +170,23 @@ const COLORS = {
 };
 
 const styles = StyleSheet.create({
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.primary,
     padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: "100%",
   },
   logoImage: {
-    width: 170,
-    height: 170,
+    width: 150,
+    height: 150,
     marginBottom: 20,
-    resizeMode: 'contain',
+    resizeMode: "contain",
   },
   title: {
     fontSize: 32,
@@ -208,11 +209,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     width: '100%',
   },
-  link: {
-    alignSelf: 'flex-end',
-    color: COLORS.accent,
-    marginBottom: 20,
-  },
   button: {
     backgroundColor: COLORS.accent,
     paddingVertical: 14,
@@ -226,39 +222,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  orRow: {
+  passwordContainer: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
-    marginVertical: 16,
-  },
-  line: {
-    flex: 1,
-    height: 1,
     backgroundColor: COLORS.light,
-  },
-  orText: {
-    marginHorizontal: 8,
-    color: COLORS.light,
-    fontSize: 14,
-  },
-  socialButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.grey,
-    paddingVertical: 12,
     borderRadius: 6,
-    width: '100%',
-    justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 12,
   },
-  socialIcon: {
-    marginRight: 8,
-    color: COLORS.textDark,
-  },
-  socialText: {
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 16,
-    color: COLORS.textDark,
+    color: COLORS.primary,
+  },
+  eyeButton: {
+    padding: 10,
   },
   switchRow: {
     flexDirection: 'row',

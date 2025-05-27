@@ -11,20 +11,26 @@ import {
   Image,
   Modal,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
-import { auth } from "../../firebase";         // adjust path if needed
+import { auth, db } from "../../firebase";         // add db import
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
   updateProfile,
 } from "firebase/auth";
+import { doc, setDoc } from 'firebase/firestore';  // add setDoc import
 
 export default function SignupScreen({ navigation }) {
   const [username, setUsername]     = useState("");
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
   const [confirm, setConfirm]       = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [sentModal, setSentModal]   = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingCancelable, setLoadingCancelable] = useState(false);
@@ -56,18 +62,34 @@ export default function SignupScreen({ navigation }) {
         email,
         password
       );
+      
+      const user = userCred.user;
+      const trimmedUsername = username.trim();
+
+      // 2) Save the chosen username to Auth profile
+      await updateProfile(user, {
+        displayName: trimmedUsername,
+      });
+
+      // 3) Create Firestore user document with all searchable fields
+      await setDoc(doc(db, 'users', user.uid), {
+        userId: user.uid,
+        displayName: trimmedUsername,
+        username: trimmedUsername.toLowerCase(), // Store lowercase for easier searching
+        email: email.toLowerCase(),
+        bio: '',
+        photoURL: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
       await minLoadingTime;
       if (abortController.canceled) return;
 
-      // 2) Save the chosen username
-      await updateProfile(userCred.user, {
-        displayName: username.trim(),
-      });
+      // 4) Send verification email
+      await sendEmailVerification(user);
 
-      // 3) Send verification email
-      await sendEmailVerification(userCred.user);
-
-      // 4) Show confirmation modal
+      // 5) Show confirmation modal
       setLoading(false);
       setSentModal(true);
     } catch (err) {
@@ -88,52 +110,88 @@ export default function SignupScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Image source={require("./stylologo.png")} style={styles.logo} />
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.container}>
+          <Image source={require("./stylologo.png")} style={styles.logo} />
 
-      <Text style={styles.title}>Create Account</Text>
-      <Text style={styles.subtitle}>To get started now!</Text>
+          <Text style={styles.title}>Create Account</Text>
+          <Text style={styles.subtitle}>To get started now!</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Username"
-        placeholderTextColor={COLORS.inputText}
-        autoCapitalize="none"
-        value={username}
-        onChangeText={setUsername}
-      />
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            placeholderTextColor={COLORS.inputText}
+            autoCapitalize="none"
+            value={username}
+            onChangeText={setUsername}
+          />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor={COLORS.inputText}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor={COLORS.inputText}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor={COLORS.inputText}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Password"
+              placeholderTextColor={COLORS.inputText}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity 
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <FontAwesome5 
+                name={showPassword ? "eye" : "eye-slash"} 
+                size={18} 
+                color={COLORS.inputText}
+              />
+            </TouchableOpacity>
+          </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Password"
-        placeholderTextColor={COLORS.inputText}
-        secureTextEntry
-        value={confirm}
-        onChangeText={setConfirm}
-      />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Confirm Password"
+              placeholderTextColor={COLORS.inputText}
+              secureTextEntry={!showConfirmPassword}
+              value={confirm}
+              onChangeText={setConfirm}
+            />
+            <TouchableOpacity 
+              style={styles.eyeButton}
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            >
+              <FontAwesome5 
+                name={showConfirmPassword ? "eye" : "eye-slash"} 
+                size={18} 
+                color={COLORS.inputText}
+              />
+            </TouchableOpacity>
+          </View>
 
-      <Pressable style={styles.signupButton} onPress={handleSignup}>
-        <Text style={styles.signupButtonText}>Sign Up</Text>
-      </Pressable>
+          <Pressable style={styles.signupButton} onPress={handleSignup}>
+            <Text style={styles.signupButtonText}>Sign Up</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
 
       {/* Verification Sent Modal */}
       <Modal
@@ -142,7 +200,7 @@ export default function SignupScreen({ navigation }) {
         animationType="fade"
         onRequestClose={() => {
           setSentModal(false);
-          navigation.navigate("Login");        // navigate immediately on modal close
+          navigation.navigate("Login");
         }}
       >
         <View style={modalStyles.overlay}>
@@ -164,7 +222,7 @@ export default function SignupScreen({ navigation }) {
               style={[modalStyles.button, modalStyles.closeButton]}
               onPress={() => {
                 setSentModal(false);
-                navigation.navigate("Login");    // immediately go to login
+                navigation.navigate("Login");
               }}
             >
               <Text style={modalStyles.buttonText}>Go to Login</Text>
@@ -192,7 +250,7 @@ export default function SignupScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -207,16 +265,21 @@ const COLORS = {
 };
 
 const styles = StyleSheet.create({
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
     padding: 20,
     justifyContent: "center",
     alignItems: "center",
+    minHeight: "100%",
   },
   logo: {
-    width: 200,
-    height: 200,
+    width: 150,
+    height: 150,
     marginBottom: 16,
     resizeMode: "contain",
   },
@@ -252,6 +315,23 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: "500",
+  },
+  passwordContainer: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.inputText,
+  },
+  eyeButton: {
+    padding: 10,
   },
 });
 

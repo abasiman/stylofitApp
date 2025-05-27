@@ -165,8 +165,7 @@ export default function OutfitDetailScreen() {
           <>
             {/* Back & Menu */}
             <View style={styles.headerRow}>
-              <Pressable onPress={() => nav.goBack()} style={styles.backBtn}>
-                <Text style={styles.backText}>‹ Back</Text>
+              <Pressable>
               </Pressable>
               <Pressable onPress={() => setMenuVisible(v => !v)} style={styles.menuBtn}>
                 <Entypo name="dots-three-vertical" size={24} color="#333" />

@@ -15,43 +15,98 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { usePosts } from '../contexts/PostsContext';
 import { db } from '../../firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 
 const { width } = Dimensions.get('window');
-const CARD_MARGIN = 4;
-const CARD_SIZE   = (width - CARD_MARGIN * 4) / 3;
+const NUM_COLUMNS = 2;
+const CONTAINER_PADDING = 12;
+const CARD_GAP = 8;
+const CARD_SIZE = (width - (2 * CONTAINER_PADDING) - CARD_GAP) / NUM_COLUMNS;
 
 export default function SearchPage() {
   const navigation = useNavigation();
   const { posts = [] } = usePosts(); 
 
-  const [users, setUsers]           = useState([]);
+  const [users, setUsers] = useState([]);
   const [searchText, setSearchText] = useState('');
-  const [activeTab, setActiveTab]   = useState('Outfits');
+  const [activeTab, setActiveTab] = useState('Outfits');
   const [searchActive, setSearchActive] = useState(false);
+
+  // Debug function to check user document
+  const checkUserDocument = async (searchTerm) => {
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('displayName', '>=', searchTerm), where('displayName', '<=', searchTerm + '\uf8ff'));
+      const querySnapshot = await getDocs(q);
+      
+      console.log('Searching for users with term:', searchTerm);
+      console.log('Found documents:', querySnapshot.size);
+      
+      querySnapshot.forEach(doc => {
+        console.log('User document:', doc.id, doc.data());
+      });
+    } catch (error) {
+      console.error('Error checking user document:', error);
+    }
+  };
 
   // Subscribe to all users
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, 'users'),
       snapshot => {
-        setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        const usersData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log('Loaded users:', usersData);
+        setUsers(usersData);
       },
       err => console.error('Users listen error:', err)
     );
     return unsub;
   }, []);
 
+  // Check user document when search is performed
+  useEffect(() => {
+    if (searchText && activeTab === 'Users') {
+      checkUserDocument(searchText);
+    }
+  }, [searchText, activeTab]);
+
   // Filtered lists
   const normalized = searchText.toLowerCase();
+  console.log('Search text:', normalized);
+
   const filteredOutfits = posts.filter(post =>
     post.location?.name?.toLowerCase().includes(normalized)
   );
-  const filteredUsers = users.filter(u =>
-    u.displayName?.toLowerCase().includes(normalized)
-  );
 
-  // Render the 3-column grid of outfits
+  const filteredUsers = users.filter(u => {
+    // Fields to search through
+    const searchableFields = {
+      displayName: u.displayName,
+      username: u.username || u.displayName?.toLowerCase(), // Fallback to lowercase displayName
+      bio: u.bio,
+      email: u.email
+    };
+
+    // Remove null/undefined values
+    Object.keys(searchableFields).forEach(key => {
+      if (!searchableFields[key]) delete searchableFields[key];
+    });
+
+    console.log('Checking user:', u.displayName, 'Fields:', searchableFields);
+
+    // Check each field
+    return Object.values(searchableFields).some(field => {
+      const fieldStr = String(field).toLowerCase();
+      const match = fieldStr.includes(normalized);
+      if (match) {
+        console.log('Match found in field:', field);
+      }
+      return match;
+    });
+  });
+
+  // Render the 2-column grid of outfits
   const renderOutfitsGrid = () => (
     <View style={styles.grid}>
       {filteredOutfits.map(post => (
@@ -78,8 +133,23 @@ export default function SearchPage() {
           style={styles.userCard}
           onPress={() => navigation.navigate('User', { userId: user.id })}
         >
-          <Text style={styles.userIcon}>👤</Text>
-          <Text style={styles.userName}>{user.displayName}</Text>
+          {user.photoURL ? (
+            <Image source={{ uri: user.photoURL }} style={styles.userAvatar} />
+          ) : (
+            <View style={styles.userAvatarPlaceholder}>
+              <Text style={styles.userAvatarText}>
+                {(user.displayName || 'U')[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>{user.displayName}</Text>
+            {user.bio && (
+              <Text style={styles.userBio} numberOfLines={1}>
+                {user.bio}
+              </Text>
+            )}
+          </View>
         </Pressable>
       ))}
       {filteredUsers.length === 0 && (
@@ -106,7 +176,7 @@ export default function SearchPage() {
 
       <TextInput
         style={styles.searchBar}
-        placeholder="Search outfits by location…"
+        placeholder={activeTab === 'Users' ? "Search users..." : "Search outfits by location…"}
         placeholderTextColor="#999"
         value={searchText}
         onChangeText={text => {
@@ -145,7 +215,7 @@ export default function SearchPage() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 10,
+    padding: CONTAINER_PADDING,
     backgroundColor: '#fff',
     alignItems: 'center'
   },
@@ -198,19 +268,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   grid: {
-    width:           '100%',
-    flexDirection:   'row',
-    flexWrap:        'wrap',
-    justifyContent:  'flex-start'
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: CARD_GAP,
   },
   card: {
-    width:         CARD_SIZE,
-    height:        CARD_SIZE,
-    marginRight:   CARD_MARGIN,
-    marginBottom:  CARD_MARGIN,
+    width: CARD_SIZE,
+    height: CARD_SIZE,
     backgroundColor: '#fff',
-    borderRadius:    8,
-    overflow:        'hidden'
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   cardImage: {
     width:      '100%',
@@ -218,20 +288,47 @@ const styles = StyleSheet.create({
     resizeMode: 'cover'
   },
   userCard: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    width:           '100%',
-    padding:         10,
-    borderBottomWidth:1,
-    borderColor:     '#eee'
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+    backgroundColor: '#fff'
   },
-  userIcon: {
-    fontSize:    24,
-    marginRight: 10
+  userAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15
+  },
+  userAvatarPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15,
+    backgroundColor: '#e1e1e1',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  userAvatarText: {
+    fontSize: 20,
+    color: '#fff',
+    fontWeight: 'bold'
+  },
+  userInfo: {
+    flex: 1
   },
   userName: {
     fontSize: 16,
-    color:    '#333'
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4
+  },
+  userBio: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2
   },
   emptyText: {
     textAlign: 'center',

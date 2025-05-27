@@ -11,27 +11,19 @@ export default function Settings() {
       <Text style={styles.title}>SETTINGS</Text>
 
       <View style={styles.buttonContainer}>
-      <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MyAccount')}>
-        <View>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('MyAccount')}>
+          <View>
             <Text style={styles.buttonTitle}>My Account</Text>
             <Text style={styles.buttonSubtitle}>
-            Account Information, Password, Logout, Delete Account
+              Account Information, Password, Logout, Delete Account
             </Text>
-        </View>
-        <Icon name="chevron-forward" size={20} color="#fff" />
+          </View>
+          <Icon name="chevron-forward" size={20} color="#fff" />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('NotifSettings')}>
           <Text style={styles.buttonTitle}>Notifications</Text>
           <Icon name="chevron-forward" size={20} color="#fff" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button}>
-          <Text style={styles.buttonTitle}>Language</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={styles.language}>English</Text>
-            <Icon name="chevron-forward" size={20} color="#fff" />
-          </View>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -74,9 +66,5 @@ const styles = StyleSheet.create({
     color: '#f0f0f0',
     fontSize: 12,
     marginTop: 2,
-  },
-  language: {
-    color: '#fff',
-    marginRight: 5,
   },
 });

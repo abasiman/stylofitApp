@@ -28,8 +28,6 @@ export default function MyAccount() {
   const [accountInfo, setAccountInfo] = useState({
     username: '',
     email:    '',
-    dob:      '',
-    region:   '',
   });
 
   // Password‐change UI state
@@ -50,8 +48,6 @@ export default function MyAccount() {
           setAccountInfo({
             username: d.displayName   || '',
             email:    me.email        || '',
-            dob:      d.dateOfBirth   || '',
-            region:   d.region        || '',
           });
         }
       } catch (err) {
@@ -133,8 +129,6 @@ export default function MyAccount() {
         <View style={styles.infoBox}>
           <InfoRow label="Username"      value={accountInfo.username} />
           <InfoRow label="Email"         value={accountInfo.email} />
-          <InfoRow label="Date of Birth" value={accountInfo.dob} />
-          <InfoRow label="Region"        value={accountInfo.region} />
         </View>
       </View>
 
