@@ -38,7 +38,9 @@
     "extra": {
       "eas": {
         "projectId": "10829edb-25c0-44b4-8484-5a29c13dbb14"
-      }
+      },
+    
+      "GOOGLE_VISION_API_KEY": "AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc"
     }
   }
 }

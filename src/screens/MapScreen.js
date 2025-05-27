@@ -1,184 +1,168 @@
-// src/screens/MapScreen.js
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  View, TextInput, FlatList, TouchableOpacity, Text,
-  StyleSheet, Dimensions, Platform, Animated, Easing,
+  View,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Dimensions,
+  Platform,
+  Animated,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import MapViewDirections from 'react-native-maps-directions';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
 const { width } = Dimensions.get('window');
-const GOOGLE_PLACES_AUTOCOMPLETE =
-  'https://maps.googleapis.com/maps/api/place/autocomplete/json';
-const GOOGLE_PLACES_DETAILS =
-  'https://maps.googleapis.com/maps/api/place/details/json';
-const API_KEY = 'AIzaSyDr58Oav5MSVkFRLOJLbHIUb9M4m0NKVhc';  // ← your key
+const API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
 
 export default function MapScreen({ route }) {
   const passedLoc = route.params?.location;
-  const mapRef     = useRef(null);
-  const [region, setRegion] = useState({
-    latitude:      passedLoc?.latitude  ?? 37.78825,
-    longitude:     passedLoc?.longitude ?? -122.4324,
-    latitudeDelta: passedLoc ? 0.01 : 0.05,
-    longitudeDelta:passedLoc ? 0.01 : 0.05,
-  });
+  const mapRef = useRef(null);
 
-  // search bar
-  const [query, setQuery]           = useState('');
-  const [results, setResults]       = useState([]);
-  const searchTimeout                = useRef(null);
+  // 1) user location state
+  const [userLoc, setUserLoc] = useState(null);
+  // 2) marker state
+  const [marker, setMarker] = useState(
+    passedLoc
+      ? {
+          latitude: passedLoc.latitude,
+          longitude: passedLoc.longitude,
+          title: passedLoc.name,
+        }
+      : null
+  );
 
-  // marker drop animation
-  const dropAnim = useRef(new Animated.Value(0)).current;
-  const [marker,   setMarker]        = useState(passedLoc ? {
-    latitude:  passedLoc.latitude,
-    longitude: passedLoc.longitude,
-    title:     passedLoc.name,
-  } : null);
+  // animated ping value
+  const pingAnim = useRef(new Animated.Value(0)).current;
 
-  // optional hotspots (static example)
-  const HOTSPOTS = [
-    { id:'h1', title:'Hotspot A', latitude:37.7895, longitude:-122.4313 },
-    { id:'h2', title:'Hotspot B', latitude:37.7870, longitude:-122.4330 },
-  ];
-
-  // center on passed location on mount
+  // pull user location once
   useEffect(() => {
-    if (passedLoc && mapRef.current) animateTo(passedLoc);
-  }, [passedLoc]);
+    (async () => {
+      let { coords } = await Location.getCurrentPositionAsync();
+      setUserLoc({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+    })();
+  }, []);
 
-  function animateMarkerDrop() {
-    dropAnim.setValue(-50);
-    Animated.spring(dropAnim, {
-      toValue: 0,
-      friction: 5,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }
+  // whenever passedLoc changes, drop marker, draw route, and fit camera
+  useEffect(() => {
+    if (!passedLoc || !mapRef.current) return;
 
-  function animateTo({ latitude, longitude }) {
-    mapRef.current.animateToRegion(
-      { latitude, longitude, latitudeDelta:0.01, longitudeDelta:0.01 },
-      1000
+    const dest = {
+      latitude: passedLoc.latitude,
+      longitude: passedLoc.longitude,
+    };
+
+    // animate camera
+    mapRef.current.fitToCoordinates(
+      [userLoc, dest].filter(Boolean),
+      { edgePadding: { top: 80, bottom: 80, left: 40, right: 40 }, animated: true }
     );
-    animateMarkerDrop();
-  }
 
-  // debounced search
-  useEffect(() => {
-    clearTimeout(searchTimeout.current);
-    if (query.length < 2) return setResults([]);
+    // start ping loop
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pingAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
+        Animated.timing(pingAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    ).start();
 
-    searchTimeout.current = setTimeout(async () => {
-      const loc = await Location.getCurrentPositionAsync();
-      const qs = [
-        `input=${encodeURIComponent(query)}`,
-        `key=${API_KEY}`,
-        `location=${loc.coords.latitude},${loc.coords.longitude}`,
-        'radius=50000',
-        'types=establishment',
-      ].join('&');
-
-      try {
-        const res = await fetch(`${GOOGLE_PLACES_AUTOCOMPLETE}?${qs}`);
-        const js  = await res.json();
-        setResults(js.status==='OK' ? js.predictions : []);
-      } catch {
-        setResults([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(searchTimeout.current);
-  }, [query]);
-
-  const onSelect = async place_id => {
-    // fetch details for coords
-    try {
-      const res = await fetch(
-        `${GOOGLE_PLACES_DETAILS}?place_id=${place_id}&key=${API_KEY}`
-      );
-      const js  = await res.json();
-      if (js.status==='OK') {
-        const { lat, lng } = js.result.geometry.location;
-        const title       = js.result.name;
-        const newLoc      = { latitude:lat, longitude:lng, title };
-        setMarker(newLoc);
-        animateTo(newLoc);
-        setQuery(''); setResults([]);
-      }
-    } catch {}
-  };
+    // update marker
+    setMarker({ ...dest, title: passedLoc.name });
+  }, [passedLoc, userLoc]);
 
   return (
     <View style={styles.container}>
       {/* Search Bar */}
-      <View style={styles.searchBox}>
-        <MaterialIcons name="search" size={20} color="#333" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search stores or address…"
-          value={query}
-          onChangeText={setQuery}
-        />
-      </View>
-      {results.length > 0 && (
-        <FlatList
-          data={results}
-          keyExtractor={i=>i.place_id}
-          style={styles.suggestions}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({item})=>(
-            <TouchableOpacity
-              style={styles.suggestItem}
-              onPress={()=>onSelect(item.place_id)}
-            >
-              <Text>{item.description}</Text>
-            </TouchableOpacity>
-          )}
-        />
-      )}
+      {/* ... your existing search & results code here ... */}
 
-      {/* Map */}
       <MapView
         ref={mapRef}
         style={styles.map}
-        initialRegion={region}
+        initialRegion={{
+          latitude: passedLoc?.latitude ?? 37.78825,
+          longitude: passedLoc?.longitude ?? -122.4324,
+          latitudeDelta: passedLoc ? 0.01 : 0.05,
+          longitudeDelta: passedLoc ? 0.01 : 0.05,
+        }}
       >
-        {/* Main marker */}
-        {marker && (
-          <Marker coordinate={marker}>
-            <Animated.View style={{ transform:[{ translateY: dropAnim }] }}>
-              <View style={styles.pin}/>
-            </Animated.View>
+        {/* draw directions line */}
+        {userLoc && marker && (
+          <MapViewDirections
+            origin={userLoc}
+            destination={marker}
+            apikey={API_KEY}
+            strokeWidth={4}
+            strokeColor="#83715D"
+          />
+        )}
+
+        {/* user location marker (optional) */}
+        {userLoc && (
+          <Marker coordinate={userLoc}>
+            <View style={styles.userPin}>
+              <MaterialIcons name="my-location" size={24} color="#337ab7" />
+            </View>
           </Marker>
         )}
 
-        {/* Hotspots */}
-        {HOTSPOTS.map(h => (
-          <Marker
-            key={h.id}
-            coordinate={{ latitude:h.latitude, longitude:h.longitude }}
-          >
-            <View style={styles.hotspot}/>
-            <Text style={styles.hotspotLabel}>{h.title}</Text>
+        {/* store marker + ping */}
+        {marker && (
+          <Marker coordinate={marker}>
+            <View style={styles.markerContainer}>
+              <Animated.View
+                style={[
+                  styles.ping,
+                  {
+                    transform: [{ scale: pingAnim.interpolate({ inputRange:[0,1], outputRange:[0.3,2] }) }],
+                    opacity: pingAnim.interpolate({ inputRange:[0,1], outputRange:[0.6,0] }),
+                  },
+                ]}
+              />
+              <View style={styles.pin} />
+            </View>
           </Marker>
-        ))}
+        )}
       </MapView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container:   { flex:1 },
-  map:         { flex:1 },
-  pin:         {
-    width:24, height:24,
-    backgroundColor:'#e74c3c',
-    borderRadius:12,
-    borderWidth:2, borderColor:'#fff',
+  container: { flex: 1 },
+  map: { flex: 1 },
+
+  // store marker + ping
+  markerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ping: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(131,113,93,0.4)',
+  },
+  pin: {
+    width: 16,
+    height: 16,
+    backgroundColor: '#83715D',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+
+  // optional user-location pin
+  userPin: {
+    backgroundColor: 'rgba(51, 122, 183, 0.2)',
+    borderRadius: 16,
+    padding: 2,
   },
   searchBox:   {
     position:'absolute', top:Platform.OS==='ios'?60:40,

@@ -12,6 +12,8 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  TouchableOpacity,
+  Dimensions,
 } from 'react-native';
 import { FontAwesome, MaterialCommunityIcons } from '@expo/vector-icons';
 import { usePosts } from '../contexts/PostsContext';
@@ -25,26 +27,25 @@ import {
   orderBy,
 } from 'firebase/firestore';
 
+const { width } = Dimensions.get('window');
+
 const PostCard = ({ post }) => {
   const { likePost, unlikePost, addComment } = usePosts();
   const navigation = useNavigation();
   const currentUser = auth.currentUser;
   const lastTap = useRef(null);
 
-  // — author info —
+  // State
   const [author, setAuthor] = useState({ displayName: '', photoURL: null });
-
-  // like state + counts
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [commentsCount, setCommentsCount] = useState(0);
-
-  // comments modal
   const [comments, setComments] = useState([]);
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [selectedTag, setSelectedTag] = useState(null);
 
-  // 0️⃣ load the post‐owner’s profile
+  // Load author info
   useEffect(() => {
     const userRef = doc(db, 'users', post.userId);
     const unsub = onSnapshot(userRef, snap => {
@@ -52,14 +53,14 @@ const PostCard = ({ post }) => {
         const data = snap.data();
         setAuthor({
           displayName: data.displayName || 'Unknown',
-          photoURL:    data.photoURL    || null,
+          photoURL: data.photoURL || null,
         });
       }
     });
     return () => unsub();
   }, [post.userId]);
 
-  // 1️⃣ has current user liked?
+  // Check if current user liked
   useEffect(() => {
     if (!currentUser) return;
     const likeDoc = doc(db, 'outfits', post.id, 'likes', currentUser.uid);
@@ -69,7 +70,7 @@ const PostCard = ({ post }) => {
     return () => unsub();
   }, [post.id, currentUser]);
 
-  // 2️⃣ like count
+  // Like count
   useEffect(() => {
     const likesCol = collection(db, 'outfits', post.id, 'likes');
     const unsub = onSnapshot(likesCol, snap => {
@@ -78,7 +79,7 @@ const PostCard = ({ post }) => {
     return () => unsub();
   }, [post.id]);
 
-  // 3️⃣ comment count
+  // Comment count
   useEffect(() => {
     const commentsCol = collection(db, 'outfits', post.id, 'comments');
     const unsub = onSnapshot(commentsCol, snap => {
@@ -87,7 +88,7 @@ const PostCard = ({ post }) => {
     return () => unsub();
   }, [post.id]);
 
-  // 4️⃣ full comments when modal open
+  // Full comments when modal open
   useEffect(() => {
     if (!commentModalVisible) return;
     const commentsQ = query(
@@ -102,7 +103,7 @@ const PostCard = ({ post }) => {
 
   const handleToggleLike = () => {
     if (liked) unlikePost(post.id);
-    else        likePost(post.id);
+    else likePost(post.id);
   };
 
   const handleDoubleTap = () => {
@@ -118,25 +119,89 @@ const PostCard = ({ post }) => {
     setNewComment('');
   };
 
+  const showTagDetails = (tag) => {
+    setSelectedTag(tag);
+  };
+
+  const navigateToLocation = () => {
+    if (!selectedTag?.place) return;
+    navigation.navigate('Map', { location: selectedTag.place });
+    setSelectedTag(null);
+  };
+
+  // Only first word of store name
+  const getFirstName = (fullName) => fullName.split(' ')[0];
+
+  // Overlay tag (on image)
+  const renderTag = (tag, index) => {
+    if (!tag || !tag.position) return null;
+    const fullName = tag.place?.name || 'Unknown';
+    const name = getFirstName(fullName);
+
+    return (
+      <TouchableOpacity
+        key={index}
+        style={[
+          styles.tag,
+          { 
+            top: `${tag.position.y}%`, 
+            left: `${tag.position.x}%`,
+          }
+        ]}
+        onPress={() => showTagDetails(tag)}
+        activeOpacity={0.8}
+      >
+        <MaterialCommunityIcons
+          name="map-marker"
+          size={16}
+          color="#fff"
+          style={{ marginRight: 4 }}
+        />
+        <Text style={styles.tagText}>{name}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // Featured Stores pill
+  const renderTagPill = (tag, index) => {
+    if (!tag) return null;
+    const fullName = tag.place?.name || 'Unknown';
+    const name = getFirstName(fullName);
+
+    return (
+      <TouchableOpacity 
+        key={index} 
+        style={styles.tagPill}
+        onPress={() => showTagDetails(tag)}
+        activeOpacity={0.8}
+      >
+        <MaterialCommunityIcons
+          name="map-marker"
+          size={16}
+          color="#fff"
+          style={{ marginRight: 4 }}
+        />
+        <Text style={styles.tagPillText}>{name}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.card}>
       {/* Header */}
       <View style={styles.cardHeader}>
         <Pressable
-          onPress={() =>
-            navigation.navigate('User', { userId: post.userId })
-          }
+          onPress={() => navigation.navigate('User', { userId: post.userId })}
         >
-          {author.photoURL
-            ? <Image source={{ uri: author.photoURL }} style={styles.profilePic} />
-            : <View style={styles.profilePic} />
-          }
+          {author.photoURL ? (
+            <Image source={{ uri: author.photoURL }} style={styles.profilePic} />
+          ) : (
+            <View style={styles.profilePic} />
+          )}
         </Pressable>
 
         <Pressable
-          onPress={() =>
-            navigation.navigate('User', { userId: post.userId })
-          }
+          onPress={() => navigation.navigate('User', { userId: post.userId })}
           style={{ flex: 1 }}
         >
           <Text style={styles.username}>@{author.displayName}</Text>
@@ -149,17 +214,7 @@ const PostCard = ({ post }) => {
       <TouchableWithoutFeedback onPress={handleDoubleTap}>
         <View style={styles.outfitContainer}>
           <Image source={{ uri: post.imageUrl }} style={styles.outfitImage} />
-          {post.tags?.map((tag, i) => (
-            <Pressable
-              key={i}
-              style={[
-                styles.tag,
-                { top:  `${tag.position.y}%`, left: `${tag.position.x}%` }
-              ]}
-            >
-              <Text style={styles.tagText}>{tag.brand || '(no brand)'}</Text>
-            </Pressable>
-          ))}
+          {post.tags?.map((tag, i) => renderTag(tag, i))}
         </View>
       </TouchableWithoutFeedback>
 
@@ -180,22 +235,59 @@ const PostCard = ({ post }) => {
           onPress={() => setCommentModalVisible(true)}
         />
         <Text style={styles.countText}>{commentsCount}</Text>
-
-        {/* <FontAwesome name="bookmark" size={24} style={{ marginLeft: 'auto' }} /> */}
       </View>
 
       {/* Caption */}
       <Text style={styles.caption}>{post.caption}</Text>
 
-      {/* Location */}
-      {post.location && (
-        <Pressable
-          onPress={() => navigation.navigate('Map', { location: post.location })}
-          style={styles.locationBadge}
-        >
-          <Text style={styles.locationText}>📍 {post.location.name}</Text>
-        </Pressable>
+      {/* Tags summary */}
+      {post.tags?.length > 0 && (
+        <View style={styles.tagsSummary}>
+          <Text style={styles.tagsSummaryTitle}>Featured Stores:</Text>
+          <View style={styles.tagsList}>
+            {post.tags.map((tag, i) => renderTagPill(tag, i))}
+          </View>
+        </View>
       )}
+
+      {/* Tag Details Modal */}
+      <Modal
+        visible={!!selectedTag}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedTag(null)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSelectedTag(null)}>
+          <View style={styles.tagModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.tagModalContent}>
+                <Text style={styles.tagModalTitle}>
+                  {selectedTag?.place?.name || 'Store Details'}
+                </Text>
+
+                {selectedTag?.place?.address && (
+                  <Text style={styles.tagModalAddress}>
+                    {selectedTag.place.address}
+                  </Text>
+                )}
+
+                <TouchableOpacity 
+                  style={styles.tagModalButton}
+                  onPress={navigateToLocation}
+                >
+                  <MaterialCommunityIcons
+                    name="map-marker"
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.tagModalButtonText}>View on Map</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* Comments Modal */}
       <Modal
@@ -247,31 +339,204 @@ const PostCard = ({ post }) => {
   );
 };
 
-export default PostCard;
-
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#F5F5F5', borderRadius: 20, padding: 15, marginBottom: 20 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  profilePic: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#83715D', marginRight: 8 },
-  username: { fontSize: 16, fontWeight: 'bold', flex: 1 },
-  outfitContainer: { position: 'relative', backgroundColor: '#FFF', height: 300, borderRadius: 10, overflow: 'hidden', marginBottom: 10 },
-  outfitImage: { width: '100%', height: '100%' },
-  tag: { position: 'absolute', backgroundColor: '#333', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  tagText: { color: '#fff', fontSize: 12 },
-  actions: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  countText: { marginLeft: 6, fontSize: 14, color: '#333' },
-  caption: { fontSize: 14, color: '#333', marginBottom: 8 },
-  locationBadge: { marginTop: 8, padding: 6, backgroundColor: '#EAEAE9', borderRadius: 12, alignSelf: 'flex-start' },
-  locationText: { fontSize: 14, color: '#333' },
-  modalWrapper: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center' },
-  commentsContainer: { backgroundColor: '#fff', margin: 20, borderRadius: 10, padding: 16, maxHeight: '80%' },
-  commentsTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
-  commentRow: { flexDirection: 'row', marginBottom: 8 },
-  commentUser: { fontWeight: 'bold', marginRight: 6 },
-  commentText: { flex: 1, flexWrap: 'wrap' },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
-  commentInput: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  sendButton: { marginLeft: 8, backgroundColor: '#83715D', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 },
-  sendButtonText: { color: '#fff' },
-  modalClose: { marginTop: 10, alignSelf: 'center' },
+  card: { 
+    backgroundColor: '#F5F5F5', 
+    borderRadius: 20, 
+    padding: 15, 
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cardHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 10 
+  },
+  profilePic: { 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    backgroundColor: '#83715D', 
+    marginRight: 8 
+  },
+  username: { 
+    fontSize: 16, 
+    fontWeight: 'bold', 
+    flex: 1 
+  },
+  outfitContainer: { 
+    position: 'relative', 
+    backgroundColor: '#FFF', 
+    height: 300, 
+    borderRadius: 10, 
+    overflow: 'hidden', 
+    marginBottom: 10 
+  },
+  outfitImage: { 
+    width: '100%', 
+    height: '100%' 
+  },
+  tag: {
+    position: 'absolute',
+    backgroundColor: 'rgba(51, 51, 51, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '60%',
+  },
+  tagText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  tagsSummary: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#EAEAE9',
+    borderRadius: 12,
+  },
+  tagsSummaryTitle: {
+    fontWeight: 'bold',
+    marginBottom: 5,
+    fontSize: 12,
+    color: '#666',
+  },
+  tagsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  tagPill: {
+    backgroundColor: '#83715D',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 5,
+    marginBottom: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagPillText: {
+    color: '#fff',
+    fontSize: 12,
+  },
+  actions: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 8 
+  },
+  countText: { 
+    marginLeft: 6, 
+    fontSize: 14, 
+    color: '#333' 
+  },
+  caption: { 
+    fontSize: 14, 
+    color: '#333', 
+    marginBottom: 8 
+  },
+  // Tag Modal Styles
+  tagModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  tagModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: width - 40,
+  },
+  tagModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  tagModalAddress: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+  },
+  tagModalButton: {
+    backgroundColor: '#83715D',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagModalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Comments Modal Styles
+  modalWrapper: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'center' 
+  },
+  commentsContainer: { 
+    backgroundColor: '#fff', 
+    margin: 20, 
+    borderRadius: 10, 
+    padding: 16, 
+    maxHeight: '80%' 
+  },
+  commentsTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    marginBottom: 12 
+  },
+  commentRow: { 
+    flexDirection: 'row', 
+    marginBottom: 8 
+  },
+  commentUser: { 
+    fontWeight: 'bold', 
+    marginRight: 6 
+  },
+  commentText: { 
+    flex: 1, 
+    flexWrap: 'wrap' 
+  },
+  commentInputRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 12 
+  },
+    commentInput: { 
+    flex: 1, 
+    borderWidth: 1, 
+    borderColor: '#ccc', 
+    borderRadius: 8, 
+    paddingHorizontal: 10, 
+    paddingVertical: 6 
+  },
+  sendButton: { 
+    marginLeft: 8, 
+    backgroundColor: '#83715D', 
+    paddingVertical: 8, 
+    paddingHorizontal: 12, 
+    borderRadius: 8 
+  },
+  sendButtonText: { 
+    color: '#fff', 
+    fontWeight: 'bold' 
+  },
+  modalClose: { 
+    marginTop: 10, 
+    alignSelf: 'center' 
+  },
 });
+
+export default PostCard;
